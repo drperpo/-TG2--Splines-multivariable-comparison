@@ -13,3 +13,4 @@
  - Agree on comparison metrics for the approaches 
  - Agree on overall structure and protocol
  - Agree on people that may have time and interest to work on the project
+
