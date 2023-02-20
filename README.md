@@ -1,1 +1,1 @@
-# -TG2--Splines-multivariable-comparison
+# STRATOS TG2- Splines project multivariable comparison
