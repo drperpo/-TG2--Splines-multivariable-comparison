@@ -41,7 +41,8 @@ library(dplyr)
 Download from: https://www.kaggle.com/datasets/uciml/pima-indians-diabetes-database?resource=download. Or get the same data as in Sauerbrei, Royston book from: https://mfp.imbi.uni-freiburg.de/book#dataset_tables
 
 ```{r, warning= FALSE, message=FALSE}
-pima <- read.csv("data/pimaSR.csv",header=TRUE)
+#pima <- read.csv("data/pimaSR.csv",header=TRUE)
+pima <- read.csv("~/GitHub/-TG2--Splines-multivariable-comparison/data/pima.csv",header=TRUE)
 ```
 
 Data do have missing values. The ones downloaded from Sauerbrei have imputed values. 

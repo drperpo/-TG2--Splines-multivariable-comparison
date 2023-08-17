@@ -1,0 +1,209 @@
+---
+title: "Variable and functional form selection with MFP, Splines and TP-Splines: examples"
+author: 
+  -name: "Georg Heinze, Aris Perperoglou"
+    affiliation: "Medical University of Vienna, Center for Medical Data Science & GSK"
+date: last-modified                            # "`r Sys.Date()`" for system date
+categories: [2023, STRATOS-TG2, R]
+description: "Classification: confidential"
+editor: visual
+theme: cosmo                                   # cosmo bootswatch theme
+toc: true                                      # table of contents  
+number-sections: true
+colorlinks: true                               # ??
+highlight-style: pygments
+#bibliography: references.bib
+format:
+  html: 
+    code-fold: true
+    code-tools: true
+    html-math-method: katex
+    self-contained: true                      # html is self-contained
+  pdf:
+    geometry: 
+      - top=30mm
+      - left=30mm
+  docx: default                               
+---
+
+```{r, warning= FALSE, message=FALSE}
+library(mfp2)
+library(splines)
+library(mgcv)
+#library(mice)
+library(dplyr)
+library(ggplot2)
+```
+
+## PIMA indians data
+
+Download from: https://www.kaggle.com/datasets/uciml/pima-indians-diabetes-database?resource=download. Or get the same data as in Sauerbrei, Royston book from: https://mfp.imbi.uni-freiburg.de/book#dataset_tables
+
+```{r, warning= FALSE, message=FALSE}
+#pima <- read.csv("data/pimaSR.csv",header=TRUE)
+pima <- read.csv("~/GitHub/-TG2--Splines-multivariable-comparison/data/pima.csv",header=TRUE)
+```
+
+
+Data do have missing values. The ones downloaded from Sauerbrei have imputed values. 
+
+```{r, echo=FALSE}
+dat1 <- pima
+dat1 <- dat1[,c(2:10)]
+
+names(dat1) <- c("Pregnancies",  "Glucose" ,  "BloodPressure", 
+                 "SkinThickness",   "Insulin" ,  "BMI"   ,
+                 "DiabetesPedigreeFunction" ,"Age",       "Outcome")
+```
+
+
+
+Here we analyse the PIMA data using the brandnew `mfp2` package for multivariable fractional polynomials, the `mgcv` for thin plate splines with double penalization, and `rms` for analysis using restricted cubic splines to . The goal is to predict diabetes onset using the predictors pregnancies, glucose, bloodpressure, skin thickness, insulin, BMI, Diabetes in Pedigree, and Age.
+
+
+While pregnancies is a count variable with integers from 0 to 17, all other variables are continuous.
+
+```{r}
+predictors <- names(dat1)[-9]
+histi <- list(8)
+
+for(i in 1:8) {
+# Create a histogram for the "Pregnancies" variable
+  dat1$x <- dat1[,predictors[i]]
+  histi[[i]] <- ggplot(dat1, aes(x=x)) +
+  geom_histogram(binwidth=ifelse(i==1, 1, diff(range(dat1$x))/25), fill = "skyblue", color = i) +
+  labs(
+       x = predictors[i],
+       y = "Frequency")
+  dat1 <- dat1[,-10]
+}
+
+
+# Arrange the histograms in a grid layout
+library(gridExtra)
+grid.arrange(grobs=histi, ncol = 2)
+
+
+# Load the necessary libraries
+library(reshape2)  # For data manipulation
+
+# Create a correlation matrix (replace "dat1" with your dataset)
+cor_matrix <- cor(dat1[,1:8])
+
+# Melt the correlation matrix for plotting
+cor_melted <- melt(cor_matrix)
+
+# Create a heatmap using ggplot2
+heatmap <- ggplot(cor_melted, aes(Var1, Var2, fill = value)) +
+  geom_tile() +
+  scale_fill_gradient(low = "blue", high = "red") +
+  theme_minimal() +
+  coord_fixed(ratio = 1) +
+  labs(title = "Correlation Matrix Heatmap",
+       x = "Variables",
+       y = "Variables")
+
+# Rotate x-axis labels for better readability
+heatmap + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+```
+
+
+### MFP 
+
+```{r}
+fit_mfp <- mfp2(Outcome ~ ., data=dat1, df=4, family="binomial", select=0.05)
+summary(fit_mfp)
+```
+
+
+```{r}
+fracplot(fit_mfp) 
+
+pt_fp <- predict(fit_mfp, data=dat1, type="terms", se=TRUE)
+
+```
+
+#### RCS with rms
+
+```{r}
+library(rms)
+d<-datadist(dat1)
+
+fit_rms <- lrm(Outcome ~ rcs(Pregnancies, df=2) + rcs(Glucose, df=4) + rcs(BloodPressure, df=4) + rcs(SkinThickness, df=4) + rcs(Insulin, df=4) + rcs(BMI, df=4) + rcs(DiabetesPedigreeFunction, df=4) + rcs(Age, df=4), data=dat1, x=TRUE, y=TRUE)
+
+
+anova(fit_rms)
+
+
+```
+
+
+
+
+### TP splines with double penalization
+
+```{r}
+### thin plate regression with selection 2 (2 penalties)
+fit_tp_mgcv <- gam(Outcome ~ s(Pregnancies,bs = 'tp') + s(Glucose,bs = 'tp')+
+                         s(BloodPressure,bs = 'tp') + s(SkinThickness,bs = 'tp')+
+                         s(Insulin,bs = 'tp') + s(BMI,bs = 'tp')+ 
+                         s(DiabetesPedigreeFunction,bs = 'tp') + s(Age,bs = 'tp'),
+                        family = "binomial", data=dat1, select= TRUE, method="REML")
+
+plot(fit_tp_mgcv, residuals=TRUE, shade=TRUE, seWithMean=TRUE)
+```
+```{r}
+# R code do show partial linear predictors with confidence intervals
+
+plot_ci <- function(x, fit, se=NULL, lower=NULL, upper=NULL){
+  if(!is.null(se)){
+    lower <- fit - 1.96*se
+    upper <- fit + 1.96*se
+  }
+  
+  dat <- data.frame(x, fit, lower, upper)
+  dat<- dat[order(x),]
+  
+  p <- ggplot(dat, aes(x=x, y=fit))+ geom_line() +
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = "lightgray", alpha = 0.5)
+  return(p)
+}
+
+termfit_fp <- predict(fit_mfp, data=dat1, type="contrasts")
+termfit_tp <- predict(fit_tp_mgcv, data=dat1, type="terms", se=TRUE, seWithMean=TRUE)
+d$limits[2,"BMI"]<-mean(dat1$BMI)
+options(datadist="d")
+termfit_rms <- predict(fit_rms,  type="terms", se.fit=TRUE, center.terms=TRUE)
+
+print(plot_ci(x=termfit_fp$BMI[,"variable"], fit=termfit_fp$BMI[,"value"], lower=termfit_fp$BMI[,"lower"], upper=termfit_fp$BMI[,"upper"]))
+
+print(plot_ci(x=dat1$BMI, fit=termfit_tp$fit[,"s(BMI)"], se=termfit_tp$se.fit[,"s(BMI)"]))
+
+print(plot_ci(x=dat1$BMI, fit=termfit_rms$fitted[,"BMI"], se=termfit_rms$se.fit[,"BMI"]))
+
+
+```
+
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+## Running Code
+
+When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+
+```{r}
+1 + 1
+```
+
+You can add options to executable code like this 
+
+```{r}
+#| echo: false
+2 * 2
+```
+
+The `echo: false` option disables the printing of code (only output is displayed).
