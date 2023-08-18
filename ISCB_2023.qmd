@@ -2,7 +2,7 @@
 title: "Variable and functional form selection with MFP, Splines and TP-Splines: examples"
 author: 
   -name: "Georg Heinze, Aris Perperoglou"
-    affiliation: "Medical University of Vienna, Center for Medical Data Science & GSK"
+  -affiliation: "Medical University of Vienna,  GSK"
 date: last-modified                            # "`r Sys.Date()`" for system date
 categories: [2023, STRATOS-TG2, R]
 description: "Classification: confidential"
@@ -121,7 +121,7 @@ summary(fit_mfp)
 ```{r}
 fracplot(fit_mfp) 
 
-pt_fp <- predict(fit_mfp, data=dat1, type="terms", se=TRUE)
+pt_fp <- predict(fit_mfp, data=dat1, type="contrasts", se=TRUE, terms="BMI", ref=list(BMI=30))
 
 ```
 
@@ -157,53 +157,61 @@ plot(fit_tp_mgcv, residuals=TRUE, shade=TRUE, seWithMean=TRUE)
 ```{r}
 # R code do show partial linear predictors with confidence intervals
 
-plot_ci <- function(x, fit, se=NULL, lower=NULL, upper=NULL){
+plot_ci <- function(x, fit, se=NULL, lower=NULL, upper=NULL, linecol="black", fillcol="lightgray", ylim=c(-7,7)){
   if(!is.null(se)){
     lower <- fit - 1.96*se
     upper <- fit + 1.96*se
   }
   
-  dat <- data.frame(x, fit, lower, upper)
+  dat <- data.frame(BMI=x, fit, lower, upper)
   dat<- dat[order(x),]
   
-  p <- ggplot(dat, aes(x=x, y=fit))+ geom_line() +
-  geom_ribbon(aes(ymin = lower, ymax = upper), fill = "lightgray", alpha = 0.5)
+  p <- ggplot(dat, aes(x=BMI, y=fit))+ geom_line(col=linecol) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = fillcol, alpha = 0.5) +ylim(ylim)
   return(p)
 }
 
-termfit_fp <- predict(fit_mfp, data=dat1, type="contrasts")
-termfit_tp <- predict(fit_tp_mgcv, data=dat1, type="terms", se=TRUE, seWithMean=TRUE)
 d$limits[2,"BMI"]<-mean(dat1$BMI)
 options(datadist="d")
-termfit_rms <- predict(fit_rms,  type="terms", se.fit=TRUE, center.terms=TRUE)
+#termfit_rms <- predict(fit_rms,  type="terms", se.fit=TRUE, center.terms=TRUE)
+
+ndat <- dat1
+ndat$Pregnancies <- mean(dat1$Pregnancies)
+ndat$Glucose <- mean(dat1$Glucose)
+ndat$BloodPressure <- mean(dat1$BloodPressure)
+ndat$SkinThickness <- mean(dat1$SkinThickness)
+ndat$Insulin <- mean(dat1$Insulin)
+ndat$DiabetesPedigreeFunction <- mean(dat1$DiabetesPedigreeFunction)
+ndat$Age <- mean(dat1$Age)
+
+
+termfit_fp <- predict(fit_mfp, newdata=ndat, type="terms", se=TRUE)
+termfit_tp <- predict(fit_tp_mgcv, newdata=dat1, type="terms", se=TRUE, seWithMean=TRUE)
+
+
+
+termfit_rms <- predict(fit_rms, newdata=ndat, type="lp", se.fit=TRUE)
 
 print(plot_ci(x=termfit_fp$BMI[,"variable"], fit=termfit_fp$BMI[,"value"], lower=termfit_fp$BMI[,"lower"], upper=termfit_fp$BMI[,"upper"]))
 
 print(plot_ci(x=dat1$BMI, fit=termfit_tp$fit[,"s(BMI)"], se=termfit_tp$se.fit[,"s(BMI)"]))
 
-print(plot_ci(x=dat1$BMI, fit=termfit_rms$fitted[,"BMI"], se=termfit_rms$se.fit[,"BMI"]))
+print(plot_ci(x=dat1$BMI, fit=termfit_rms$linear.predictors, se=termfit_rms$se.fit))
 
 
+## try to overlay!
+fpp <- plot_ci(x=termfit_fp$BMI[,"variable"], fit=termfit_fp$BMI[,"value"], lower=termfit_fp$BMI[,"lower"], upper=termfit_fp$BMI[,"upper"], linecol = "black", fillcol="lightskyblue")
+
+rmsp <- plot_ci(x=dat1$BMI, fit=termfit_rms$linear.predictors, se=termfit_rms$se.fit, linecol="saddlebrown", fillcol="tan2")
+
+
+tpp <- plot_ci(x=dat1$BMI, fit=termfit_tp$fit[,"s(BMI)"], se=termfit_tp$se.fit[,"s(BMI)"], linecol="red", fillcol="thistle2")
+
+
+
+
+library(gridExtra)
+grid.arrange(fpp, rmsp, tpp, ncol=3)
 ```
 
 
-## Quarto
-
-Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
-
-## Running Code
-
-When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
-
-```{r}
-1 + 1
-```
-
-You can add options to executable code like this 
-
-```{r}
-#| echo: false
-2 * 2
-```
-
-The `echo: false` option disables the printing of code (only output is displayed).

@@ -1,0 +1,72 @@
+---
+title: "takeout - bootstrap"
+author: "GH"
+format: html
+---
+
+### Comparison of contrasts with bootstrap CIs
+
+Here we provide a comparison of the contrasts to a BMI of 30 with bootstrapped CIs for the three methods.
+
+Unfortunately, there are still errors in the bootstrap, so this is not used finally.
+
+```{r}
+set.seed(7123981)
+d$limits[2,"BMI"]<-30
+options(datadist="d")
+
+n <- nrow(dat1)
+
+values_mfp <- values_thp <- values_rms <- matrix(0,n,100)
+
+dat2 <- dat1[order(dat1$BMI),]
+
+for(iboot in 1:100){
+  cat("Dataset ", iboot, "...")
+  datb <- dat2[sample(1:n, repl=TRUE),]
+  # MFP
+  ## fit
+  cat("MFP-")
+  fitb_mfp <- mfp(Outcome ~ fp(Pregnancies) + fp(Glucose) + fp(BloodPressure) + fp(SkinThickness) + fp(Insulin) + fp(BMI) + fp(DiabetesPedigreeFunction) + fp(Age), alpha=0.05, select=0.05, data=datb,  family="binomial",verbose=FALSE)
+  ## predict
+  #  fitb_mfp$x_original[,"BMI"] <- dat2$BMI / 10
+  values_mfp[,iboot] <- predict(fitb_mfp, seq=list(BMI=dat2$BMI), type="terms", terms="BMI", ref=list(BMI=30))$BMI[,"contrast"]
+  
+  # RMS
+  ## fit
+  cat("RMS-")
+  fbw <- fastbw(lrm(Outcome ~ rcs(Pregnancies, df=2) + rcs(Glucose, df=4) + rcs(BloodPressure, df=4) + rcs(SkinThickness, df=4) + rcs(Insulin, df=4) + rcs(BMI, df=4) + rcs(DiabetesPedigreeFunction, df=4) + rcs(Age, df=4), data=datb, x=TRUE, y=TRUE, penalty=list(simple=0, nonlinear=2)))
+  
+  df <- 
+    
+    form_fbw <- as.formula(paste("Outcome ~ ", paste(paste0("rcs(", fbw$names.kept, ", df=4)"), collapse=" + ")))
+  fitb_rms <- lrm(formula=form_fbw, data=datb, x=TRUE, y=TRUE, penalty=list(simple=0, nonlinear=2))
+  ## predict
+  
+  
+  values_rms[,iboot] <- predict(fit_rms, newdata=dat2, type="terms", se.fit=TRUE, center.terms=TRUE)$fitted[,"BMI"]
+  
+  # TP
+  ## fit
+  cat("THP-")
+  fitb_thp <- gam(Outcome ~ s(Pregnancies,bs = 'tp') + s(Glucose,bs = 'tp')+
+                    s(BloodPressure,bs = 'tp') + s(SkinThickness,bs = 'tp')+
+                    s(Insulin,bs = 'tp') + s(BMI,bs = 'tp')+ 
+                    s(DiabetesPedigreeFunction,bs = 'tp') + s(Age,bs = 'tp'),
+                  family = "binomial", data=datb, select= TRUE, method="REML")
+  
+  ## predict
+  dataref <- as.data.frame(t(apply(dat2, 2, mean)))
+  dataref[,"BMI"] <- 30
+  
+  a <-predict(fitb_thp, newdata=dat2, type="terms", se=FALSE)[,"s(BMI)"] 
+  b <-predict(fitb_thp, newdata=dataref, type="terms", se=FALSE)[,"s(BMI)"]
+  
+  values_thp[,iboot] <- a - b 
+  cat("Done.\n")
+}
+
+ci_mfp <- t(apply(values_mfp, 1, quantile, c(0.025, 0.975)))    
+ci_rms <- t(apply(values_rms, 1, quantile, c(0.025, 0.975)))    
+ci_rms <- t(apply(values_thp, 1, quantile, c(0.025, 0.975)))
+```
