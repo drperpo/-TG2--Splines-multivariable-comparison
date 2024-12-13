@@ -99,7 +99,7 @@ cols <- c(
 "#a65628",
 "#f781bf")
 
-###  Glugose
+###  Glucose
 glucose <- plotdata[[2]]$x
 plot(glucose, 3.53287*(glucose/100)-3.53287*(50/100),'l',
      ylab="Partial Predictor", xlab="Glucose")

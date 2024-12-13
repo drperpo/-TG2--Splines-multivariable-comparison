@@ -2,3 +2,11 @@
 .Rhistory
 .RData
 .Ruserdata
+
+
+# included by Daniela 
+/Rscripts/internal
+
+.html
+
+/data/pimaSR.csv

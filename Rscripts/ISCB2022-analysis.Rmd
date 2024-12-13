@@ -8,11 +8,15 @@ output:
 ---
 
 ```{r, warning= FALSE, message=FALSE}
-library(mfp)
+#library(mfp)                           # use the new mfp2 instead
+library(mfp2)
 library(splines)
 library(mgcv)
 #library(mice)
 library(dplyr)
+library(lmtest)
+library(survival)
+library(Hmisc)
 ```
 
 
@@ -29,19 +33,21 @@ library(dplyr)
 - **The second approach leaves the original smoothing penalty unchanged, but constructs an additional penalty for each smooth, which penalizes only functions in the null space of the original penalty (the ‘completely smooth’ functions). Hence, if all the smoothing parameters for a term tend to infinity, the term will be selected out of the model. This latter approach is more expensive computationally, but has the advantage that it can be applied automatically to any smooth term. The select argument to gam turns on this method.(R help file)**
 
 
-- Here, we reproduce part of that analysis with the aim of showcasing practical applications and provide simple examples for applied research. We re-run their analysis on two datasets: the PIMA indians data and PBC survival data. We apply MFP and MVRS on natural splines but also extend their analysis to include other approaches based on thin plate (TP) regression splines and p-splines (PS). We compare MFP, to MVRS, TP and PS approaches and discuss similarities. We should briefly illustrate the importance of key parameters (MFP with 0.01, 0.05, 0.157)
+- Here, we reproduce part of that analysis with the aim of showcasing practical applications and provide simple examples for applied research. We re-run their analysis on three datasets: the PIMA indians data, the PBC survival data, and the bacterimia data set. We apply MFP and MVRS on natural splines but also extend their analysis to include other approaches based on thin plate (TP) regression splines and p-splines (PS). We compare MFP, to MVRS, TP and PS approaches and discuss similarities. We should briefly illustrate the importance of key parameters (MFP with 0.01, 0.05, 0.157).
 
 
 - MAYBE: see examples on simulated data
 
-
-
 ## PIMA indians data
+## ##################
 
 Download from: https://www.kaggle.com/datasets/uciml/pima-indians-diabetes-database?resource=download. Or get the same data as in Sauerbrei, Royston book from: https://mfp.imbi.uni-freiburg.de/book#dataset_tables
 
+Comment DD: The R package mfp2 also contains the pima indians data set (missing values are already imputed).
+
 ```{r, warning= FALSE, message=FALSE}
-pima <- read.csv("data/pimaSR.csv",header=TRUE)
+#pima <- read.csv(file = "data/pimaSR.csv",header=TRUE)
+data("pima")
 ```
 
 Data do have missing values. The ones downloaded from Sauerbrei have imputed values. 
@@ -53,6 +59,10 @@ dat1 <- dat1[,c(2:10)]
 names(dat1) <- c("Pregnancies",  "Glucose" ,  "BloodPressure", 
                  "SkinThickness",   "Insulin" ,  "BMI"   ,
                  "DiabetesPedigreeFunction" ,"Age",       "Outcome")
+
+d <- Hmisc::describe(dat1)
+html(d, size = 80, scroll = TRUE)
+
 ```
 
 
@@ -63,12 +73,22 @@ Fit MFP model and select with BIC.
 ```{r, }
 
 scl <-  round(pchisq(log(nrow(dat1)),1,lower.tail = FALSE),4)
-fit1_mfp <- mfp(Outcome~ fp(Pregnancies, df=4) + fp(Glucose, df=4)+
-                         fp(BloodPressure, df=4) + fp(SkinThickness, df=4)+
-                         fp(Insulin, df=4) + fp(BMI, df=4)+ 
-                         fp(DiabetesPedigreeFunction, df=4) + fp(Age, df=4),
-                        family = "binomial", data=dat1, select=scl, verbose=FALSE)
+#fit1_mfp <- mfp::mfp(Outcome~ fp(Pregnancies, df=4) + fp(Glucose, df=4)+
+#                         fp(BloodPressure, df=4) + fp(SkinThickness, df=4)+
+#                         fp(Insulin, df=4) + fp(BMI, df=4)+ 
+#                         fp(DiabetesPedigreeFunction, df=4) + fp(Age, df=4),
+#                        family = "binomial", data=dat1, select=scl, verbose=FALSE)
 
+
+fit1_mfp2 <- mfp2::mfp2(Outcome~ fp(Pregnancies, df=4, select=scl) + fp(Glucose, df=4, select=scl)+
+                         fp(BloodPressure, df=4, select=scl) + fp(SkinThickness, df=4, select=scl)+
+                         fp(Insulin, df=4, select=scl) + fp(BMI, df=4, select=scl)+ 
+                         fp(DiabetesPedigreeFunction, df=4, select=scl) + fp(Age, df=4, select=scl),
+                        family = "binomial", data=dat1, select=scl, verbose=FALSE, alpha = 0.05 )
+# select=scl has to be included for every variable in the model, otherwise it is ignored.
+# open question: difference in some regression coefficients (due to differences in scaling, however why only in age.2 and not also in age.1?)
+
+# Comment DD: mfp2 gives an error if it is executed, if mfp is loaded.
 ```
 
 
@@ -77,21 +97,45 @@ fit1_mfp <- mfp(Outcome~ fp(Pregnancies, df=4) + fp(Glucose, df=4)+
 
 ```{r}
 
-fit1_mfp_results <- glm(formula = Outcome ~ I((Glucose/100)^1) + I((BMI/100)^-2) + 
-    I(DiabetesPedigreeFunction^1) +  log((Age/100))+I((Age/100)^3), 
+#fit1_mfp_results <- glm(formula = Outcome ~ I((Glucose/100)^1) + I((BMI/100)^-2) + 
+#    I(DiabetesPedigreeFunction^1) +  log((Age/100))+I((Age/100)^3), 
+#    family = "binomial", data = dat1)
+#par(mfrow=c(3,2))
+#termplot(fit1_mfp_results,rug=TRUE, se=TRUE, ask=FALSE)
+
+
+fit2_mfp_results <- glm(formula = Outcome ~ I((Glucose/100)^1) + I((BMI/10)^-2) + 
+    I(DiabetesPedigreeFunction^1) +  log((Age/10))+I((Age/10)^3), 
     family = "binomial", data = dat1)
 par(mfrow=c(3,2))
-termplot(fit1_mfp_results,rug=TRUE, se=TRUE, ask=FALSE)
-
+termplot(fit2_mfp_results,rug=TRUE, se=TRUE, ask=FALSE)
 ```
 
 
+```{r, echo=FALSE, results='hide'}
+### check model fit
 
+plot(fit2_mfp_results) #, which = 1)
+
+plot(dat1$Glucose,residuals(fit2_mfp_results),col=c("blue","red")[1+dat1$Outcome])
+lines(lowess(dat1$Glucose,residuals(fit2_mfp_results)),col="black",lwd=2)
+abline(h=0,lty=2,col="grey")
+
+plot(dat1$BMI,residuals(fit2_mfp_results),col=c("blue","red")[1+dat1$Outcome])
+lines(lowess(dat1$BMI,residuals(fit2_mfp_results)),col="black",lwd=2)
+abline(h=0,lty=2,col="grey")
+
+plot(dat1$DiabetesPedigreeFunction,residuals(fit2_mfp_results),col=c("blue","red")[1+dat1$Outcome])
+lines(lowess(dat1$DiabetesPedigreeFunction,residuals(fit2_mfp_results)),col="black",lwd=2)
+abline(h=0,lty=2,col="grey")
+
+plot(dat1$Age,residuals(fit2_mfp_results),col=c("blue","red")[1+dat1$Outcome])
+lines(lowess(dat1$Age,residuals(fit2_mfp_results)),col="black",lwd=2)
+abline(h=0,lty=2,col="grey")
+
+```
 
 ## Fit mgcv
-
-
-
 
 ```{r, echo=FALSE, results='hide'}
 ### additional sr
@@ -104,7 +148,7 @@ fit_cr_mgcv <- gam(Outcome ~ s(Pregnancies,bs = 'cr') + s(Glucose,bs = 'cr')+
                         family = "binomial", data=dat1, method="REML")
 #summary(fit_cr_mgcv)
 
-## bs="cs" Cubic regression splines with srinkage
+## bs="cs" Cubic regression splines with shrinkage
 fit_cs_mgcv <- gam(Outcome ~ s(Pregnancies,bs = 'cs') + s(Glucose,bs = 'cs')+
                          s(BloodPressure,bs = 'cs') + s(SkinThickness,bs = 'cs')+
                          s(Insulin,bs = 'cs') + s(BMI,bs = 'cs')+ 
@@ -178,6 +222,45 @@ fit_mvss <- glm(Outcome ~ Pregnancies + Glucose  +
 
 ```
 
+
+```{r, echo=FALSE, results='hide'}
+### check model fit
+
+plot(fit_mvss) #, which = 1)
+
+plot(dat1$Pregnancies,residuals(fit_mvss),col=c("blue","red")[1+dat1$Outcome])
+lines(lowess(dat1$Pregnancies,residuals(fit_mvss)),col="black",lwd=2)
+abline(h=0,lty=2,col="grey")
+
+plot(dat1$Glucose,residuals(fit_mvss),col=c("blue","red")[1+dat1$Outcome])
+lines(lowess(dat1$Glucose,residuals(fit_mvss)),col="black",lwd=2)
+abline(h=0,lty=2,col="grey")
+
+plot(dat1$BMI,residuals(fit_mvss),col=c("blue","red")[1+dat1$Outcome])
+lines(lowess(dat1$BMI,residuals(fit_mvss)),col="black",lwd=2)
+abline(h=0,lty=2,col="grey")
+
+plot(dat1$DiabetesPedigreeFunction,residuals(fit_mvss),col=c("blue","red")[1+dat1$Outcome])
+lines(lowess(dat1$DiabetesPedigreeFunction,residuals(fit_mvss)),col="black",lwd=2)
+abline(h=0,lty=2,col="grey")
+
+plot(dat1$Age,residuals(fit_mvss),col=c("blue","red")[1+dat1$Outcome])
+lines(lowess(dat1$Age,residuals(fit_mvss)),col="black",lwd=2)
+abline(h=0,lty=2,col="grey")
+
+
+# deviance, the smaller the better
+c("mfp"     = fit2_mfp_results$deviance,
+  "ps_mgcv" = fit_ps_mgcv$deviance,
+  "mvss"    = fit_mvss$deviance,
+  "tp_mgcv" = fit_tp_mgcv$deviance,
+  "ts_mgcv" = fit_ts_mgcv$deviance)
+
+lrtest(fit2_mfp_results, fit_mvss, fit_ps_mgcv, fit_tp_mgcv, fit_ts_mgcv)
+
+```
+
+
 ## Plots
 
 ```{r, echo=FALSE, results='hide'}
@@ -198,7 +281,7 @@ ylim <- c(-4,4)
 layout(matrix(1:4, 2, 2, byrow=TRUE),widths=c(10,10),heights=c(10,10))
 par(mar= c(4, 4, 3, 0.2))
 
-###  Glugose
+###  Glucose
 glucose <- plotdata[[2]]$x
 plot(glucose,  3.6197  *(glucose/100)- 3.6197  *(50/100),'l',
      ylab="Partial Predictor", xlab="Glucose", axes=FALSE, lwd=2)
@@ -215,7 +298,7 @@ legend("bottomright", c("MFP", "MVRS(5)", "PS_2"), lty=1, col=c(1,"#e41a1c","#37
 par(mar= c(4, .5, 3, 4))
 
 BMI <-  tplot$BMI[,1]
-plot(BMI,  -0.1516*(BMI/100)^(-2) -(-0.1516*(min(BMI)/100)^(-2)),'l',
+plot(BMI,  -15.16265*(BMI/10)^(-2) -(-15.16265*(min(BMI)/10)^(-2)),'l',
     axes=FALSE, ylim=c(-1,9), ylab="Partial Predictor", xlab="BMI", lwd=2)
 lines(BMI, tplot$BMI[,2]+2.718165, col="#e41a1c", lwd=2)
 lines(plotdata[[6]]$x, plotdata[[6]]$fit+2.718165,col="#377eb8", lwd=2)
@@ -247,8 +330,8 @@ box(); axis(1);axis(2)
 par(mar= c(4, .5, 1.5, 4))
 
 Age <- tplot$Age[,1]
-plot(Age, 4.3829 * log((Age/100))-16.7218*I((Age/100)^3)
--(4.3829 * log((21/100))-16.7218*I((21/100)^3)),'l',ylim=c(-2,2.2),ylab="Partial Predictor",
+plot(Age, 4.3829 * log((Age/10))-0.01672*I((Age/10)^3)
+-(4.3829 * log((21/10))-0.01672*I((21/10)^3)),'l',ylim=c(-2,2.2),ylab="Partial Predictor",
      xlab="Age",axes=FALSE, lwd=2)
 lines(Age, tplot$Age[,2]-tplot$Age[1,2], col="#e41a1c", lwd=2)
 lines(plotdata[[8]]$x, plotdata[[8]]$fit-plotdata[[8]]$fit[1], col="#377eb8", lwd=2)
@@ -290,7 +373,7 @@ Comp_mgcv
 |      **Biceps** |      -     |      -      |    0.0   |    0.0   |    0.0   |   0.0   |
 |     **Insulin** |      -     |      -      |    0.0   |    0.0   |    0.5   |   0.0   |
 
-
+Comment DD: age has now 2 powers: 0 and 3
 
 ```{r, echo=FALSE, results='hide'}
 
@@ -358,23 +441,47 @@ lines(mg1[[8]]$x, mg4[[8]]$fit, col=cols[3])
 lines(mg1[[8]]$x, mg5[[8]]$fit, col=cols[4])
 ```
 
-# Survival data as in chapter 9 (PBC)
+
+##  Survival data as in chapter 9 (PBC)
+## ##################
+
+The data are included in the survival package. 
+
+
 
 ```{r, echo=FALSE}
 data("pbc")
-dat <- pbc[1:312,]
+dat <- pbc[1:312,]                        # as only these participants have non-missing trt
 dat$death <- ifelse(dat$status==2,1,0)
-pbc_fp <- mfp(Surv(time,death)~ 
-                fp(age,df=4) + 
+
+d <- Hmisc::describe(dat)
+html(d, size = 80, scroll = TRUE)
+
+
+#pbc_fp <- mfp(Surv(time,death)~          # with mfp package
+#                fp(age,df=4) + 
+#                ascites+
+#                spiders + 
+#                edema+
+#                fp(bili, df=4)+
+#                fp(chol, df=4)+ 
+#                fp(albumin, df=4)+
+#                fp(copper, df=4)+
+#                fp(trig, df=4)+
+#              stage, family=cox,  select=0.127, data=dat)
+# the mfp package gives the same result as the mfp2 package. However, edema is shifted now.
+
+pbc_fp <- mfp2(Surv(time,death)~ 
+                fp(age,df=4, select = 0.127) + 
                 ascites+
                 spiders + 
                 edema+
-                fp(bili, df=4)+
-                fp(chol, df=4)+ 
-                fp(albumin, df=4)+
-                fp(copper, df=4)+
-                fp(trig, df=4)+
-              stage, family=cox,  select=0.127, data=dat)
+                fp(bili, df=4, select = 0.127)+
+                fp(chol, df=4, select = 0.127)+ 
+                fp(albumin, df=4, select = 0.127)+
+                fp(copper, df=4, select = 0.127)+
+                fp(trig, df=4, select = 0.127)+
+              stage, family="cox",  select=0.127, data=dat, verbose = FALSE)
 
 
 pbc_fp_result <- coxph(Surv(time,death)~I((age/100)^1)+ ascites + edema + 
@@ -408,7 +515,7 @@ fit_mg_ts <- gam(time~ascites+ spiders+edema+
                       stage, family=cox.ph(),
  weights=death,  method="REML",  data=dat)  
 #summary(fit_mg_ts)
-
+# Comment DD: gives a warning: "gam.fit5 step failed: max magnitude relative grad = 4.26906080557672e-08"
 
 ####  thin plate splines marra
 fit_mg_tp <- gam(time~ascites+ spiders+edema+
@@ -424,7 +531,7 @@ fit_mg_tp <- gam(time~ascites+ spiders+edema+
 
 
 fit_mg_ps<- gam(time~ascites+ spiders+edema+
-                      s(age, bs="ps")+ s(bili, bs="ps")+s(chol,bs="ps")+                                 s(albumin, bs="ps")+  s(copper, bs="ps")+  
+                      s(age, bs="ps")+ s(bili, bs="ps")+s(chol,bs="ps")+ s(albumin, bs="ps")+  s(copper, bs="ps")+  
                        s(trig, bs="ps")+
                       stage, family=cox.ph(),
  weights=death,  method="REML", select=TRUE, data=dat)  
@@ -501,6 +608,7 @@ plotdata_cs <- plot(fit_mg_cs, pages = 1)
 
 ```
 
+Question: DD: Aris, where did you compute the models, that are compared below?
 
 ```{r, echo=FALSE}
 
@@ -533,7 +641,7 @@ Bil <- plotdata[[2]]$x
 fp_f <-  0.008505*I((Bil/10)^-2) -0.318676* I((Bil/10)^-1) 
 
 plot(Bil, fp_f- (0.008505*I((.3/10)^-2)-0.318676* I((.3/10)^-1)),'l',
-    axes=FALSE, ylim=c(-2,4), ylab="Partial Predictor", xlab="Bilirunbin",lwd=2)
+    axes=FALSE, ylim=c(-2,4), ylab="Partial Predictor", xlab="Bilirubin",lwd=2)
 
 lines(Bil, 0.0888267*Bil+ (fp_f[1]-0.0888267*Bil[1]), col="#e41a1c",lwd=2)
 lines(plotdata[[2]]$x, plotdata[[2]]$fit+ (fp_f[1]-plotdata[[2]]$fit[1]),col="#377eb8",lwd=2)
